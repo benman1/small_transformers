@@ -37,14 +37,9 @@ class RMSNorm(ModelBase):
     """
     def __init__(self, d_model, eps=1e-6):
         super().__init__()
-        self.gamma = nn.Parameter(torch.ones(d_model))
-        self.beta = nn.Parameter(torch.zeros(d_model))
         self.eps = eps
 
     def forward(self, x):
         rms = x.pow(2).sum(-1, keepdim=True).sqrt()
-
-        out = x / (rms + self.eps)
-        out = self.gamma * out + self.beta
-
-        return out
+        x = x / (rms + self.eps)
+        return x
