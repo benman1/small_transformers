@@ -1,11 +1,11 @@
-name = "small_transformer"
+name = "small_transformers"
 version = "0.1.0"
 description = "Small language models for customized functionality and low latency."
 authors = [
     "Ben Auffarth <auffarth@gmail.com>",
 ]
 readme = "README.md"
-repository = "https://github.com/benman1/small-transformer"
+repository = "https://github.com/benman1/small-transformers"
 keywords = ["llms", "ai", "gpt", "transformer", "llama2"]
 
 [tool.poetry.dependencies]

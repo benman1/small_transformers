@@ -1,4 +1,4 @@
-# Small-Transformer
+# Small-Transformers
 
 Small transformers for specialized language models with low latency.
 
