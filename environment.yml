@@ -22,4 +22,5 @@ dependencies:
     - torchvision
     - tensorboard>=1.14
     - tqdm
+    - sentencepiece>=0.1.99
 
