@@ -10,7 +10,10 @@ from torch import nn as nn
 from torch.nn import functional as F
 
 from small_transformer.base import ModelBase
-from small_transformer.model import log
+from small_transformer.utils import setup_logger
+
+
+log = setup_logger(__name__)
 
 
 class Attention(ModelBase):
@@ -53,7 +56,7 @@ class FlashAttention(Attention):
     frameworks like PyTorch, DeepSpeed, and Megatron-LM.
     """
     def __init__(self, d_model, n_heads: int, n_chunks: int):
-        super().__init__()
+        super().__init__(d_model, n_heads)
         self.n_chunks = n_chunks
 
     def _calculate_attention(self, q, k, v, mask):
@@ -108,8 +111,8 @@ class GroupedQueryAttention(Attention):
     while slightly sacrificing model quality. Models like PaLM and StarCoder
     utilize multi-query attention
     """
-    def __init__(self, d_model, n_heads: int):
-        super().__init__()
+    def __init__(self, d_model: int, n_heads: int):
+        super().__init__(d_model, n_heads)
         self.d_k = d_model // n_heads
         self.v_lin = nn.Linear(d_model, d_model)
         self.out_lin = nn.Linear(d_model, d_model)

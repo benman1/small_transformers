@@ -64,9 +64,13 @@ class GPTS(ModelBase):
             parameter_sharing: type of parameter sharing for ffn ('no', 'one_ffn_encodec')
         """
         super().__init__()
-
-        self.embed = nn.Embedding(vocab_size, in_features)
-        self.pos_embed = nn.Parameter(torch.randn(1, in_features))
+        self.vocab_size = vocab_size
+        self.in_features = in_features
+        self.n_layers = n_layers
+        self.n_heads = n_heads
+        self.d_ff = d_ff
+        self.embed = nn.Embedding(self.vocab_size, self.in_features)
+        self.pos_embed = nn.Parameter(torch.randn(1, self.in_features))
         self.attention = attention
         self.norm = norm
         self.parameter_sharing = parameter_sharing
@@ -76,40 +80,40 @@ class GPTS(ModelBase):
                 attn_class = SparseAttention
             case 'flash':
                 attn_class = FlashAttention
-            case other:  # 'grouped_query':
+            case _:  # 'grouped_query':
                 attn_class = GroupedQueryAttention
 
         match self.norm:
             case 'layer_norm':
                 norm_class = LayerNorm
-            case other:  # rms_norm
+            case _:  # rms_norm
                 norm_class = RMSNorm
 
         match self.parameter_sharing:
             case 'one_ffn_encodec':
-                ffn = FeedForwardNetwork(in_features, d_ff)
+                ffn = FeedForwardNetwork(self.in_features, self.d_ff)
                 self.encoder = nn.ModuleList([
                     EncoderDecoderLayer(
-                        in_features,
-                        n_heads,
+                        self.in_features,
+                        self.n_heads,
                         ffn,
                         attn_class,
                         norm_class
                     )
-                    for _ in range(n_layers)
+                    for _ in range(self.n_layers)
                 ])
-            case other:
+            case _:
                 encoder_layer = EncoderDecoderLayer(
-                    in_features,
-                    n_heads,
-                    FeedForwardNetwork(in_features, d_ff),
+                    self.in_features,
+                    self.n_heads,
+                    FeedForwardNetwork(self.in_features, self.d_ff),
                     attn_class,
                     norm_class
                 )
                 self.encoder = nn.ModuleList([copy.deepcopy(encoder_layer)
-                                              for _ in range(n_layers)])
+                                              for _ in range(self.n_layers)])
 
-        self.lm_head = nn.Linear(in_features, vocab_size)
+        self.lm_head = nn.Linear(self.in_features, self.vocab_size)
 
     def forward(self, x):
         x = self.embed(x) + self.pos_embed
@@ -153,7 +157,7 @@ class EncoderDecoderLayer(ModelBase):
 
     def forward(self, x):
         """Forward pass."""
-        attn_out = self.self_attn.forward(x, x, x)
+        attn_out = self.attn.forward(x, x, x)
         out1 = attn_out + x
 
         ffn_out = self.ffn.forward(out1)
