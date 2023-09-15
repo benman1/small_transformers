@@ -41,7 +41,9 @@ class MultiHeadAttention(ModelBase):
         context = torch.matmul(scores, v)
 
         # Head concat and proj
-        context = context.transpose(1, 2).reshape(context.shape[0], context.shape[1], self.d_model)
+        context = context.transpose(1, 2).reshape(
+            context.shape[0], context.shape[1], self.d_model
+        )
         output = self.out_proj(context)
 
         return output
@@ -114,7 +116,9 @@ class GroupedQueryAttention(MultiHeadAttention):
         context = torch.matmul(scores, v)
 
         # Output proj
-        context = context.transpose(1, 2).reshape(context.shape[0], context.shape[1], self.d_model)
+        context = context.transpose(1, 2).reshape(
+            context.shape[0], context.shape[1], self.d_model
+        )
         output = self.out_proj(context)
 
         return output

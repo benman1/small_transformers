@@ -9,8 +9,6 @@ TODO: Where does the mask come from?
 
 A recent article advises against using Layer Normalization immediately
 after embedding layers, as it may lead to performance degradation.
-
-There are different options for the normalization position, including post-LN, pre-LN, and sandwich-LN
 """
 import copy
 from typing import Callable
@@ -61,7 +59,8 @@ class GPTS(ModelBase):
             d_ff: dimensions of feedforward network.
             attention: type of attention mechanism ('grouped_query', 'sparse', 'flash').
             norm: type of normalization layer ('layer_norm', 'rms_norm').
-            parameter_sharing: type of parameter sharing for ffn ('no', 'one_ffn_encodec')
+            parameter_sharing: type of parameter sharing for ffn
+                ('no', 'one_ffn_encodec').
         """
         super().__init__()
         self.vocab_size = vocab_size
