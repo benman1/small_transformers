@@ -22,7 +22,6 @@ def test_train_tokenizer(text_file):
 
 def test_load_tokenizer(text_file):
     """Test loading and applying the tokenizer."""
-    train_tokenizer(modelfile="test_tokenizer", vocab_size=273, textfile=str(text_file))
-    tokenizer = load_tokenizer(modelfile="test_tokenizer")
+    tokenizer = load_tokenizer(modelfile="resources/test_tokenizer")
     encoding = tokenizer.encode("This is a test")
     assert tokenizer.decode(encoding) == "This is a test"
