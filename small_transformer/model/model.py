@@ -2,13 +2,6 @@
 
 References:
 * One Wide Feedforward is All You Need by Pessoa Pires and others (2023).
-
-
-TODO: where does the layer normalization go?
-TODO: Where does the mask come from?
-
-A recent article advises against using Layer Normalization immediately
-after embedding layers, as it may lead to performance degradation.
 """
 import copy
 from typing import Callable
@@ -19,7 +12,9 @@ import torch.nn.functional as F
 
 from small_transformer.base import ModelBase
 from small_transformer.model.attention import (
-    GroupedQueryAttention, SparseAttention, FlashAttention
+    FlashAttention,
+    GroupedQueryAttention,
+    SparseAttention,
 )
 from small_transformer.model.normalization import LayerNorm, RMSNorm
 from small_transformer.utils import setup_logger
@@ -31,12 +26,14 @@ class GPTS(ModelBase):
     """GPTS - a small GPT.
 
     This implements the core transformer architecture
-    with some simplifications like removing layer normalization.
 
     The EncoderDecoderLayer contains the multi-head self attention and
     feedforward network, and is shared between the encoder and decoder.
     The attention is implemented to use grouped queries, matching a GPT-style
     decoder-only architecture.
+    
+    TODO: add weight initialization.
+    TODO: positional encoding?
     """
 
     def __init__(

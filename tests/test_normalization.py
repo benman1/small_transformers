@@ -1,6 +1,7 @@
 """Test normalizations."""
-import torch
 import pytest
+import torch
+
 from small_transformer.model import LayerNorm, RMSNorm
 
 

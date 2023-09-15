@@ -4,7 +4,6 @@ import torch
 
 from small_transformer.model import GPTS
 
-
 vocab_size = 1000
 d_model = 512
 n_layers = 6

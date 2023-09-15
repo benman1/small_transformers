@@ -1,8 +1,12 @@
 """Tests for the attention mechanisms."""
-import torch
 import pytest
+import torch
+
 from small_transformer.model import (
-    MultiHeadAttention, SparseAttention, FlashAttention, GroupedQueryAttention
+    FlashAttention,
+    GroupedQueryAttention,
+    MultiHeadAttention,
+    SparseAttention,
 )
 
 batchsize = 16

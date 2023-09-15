@@ -10,7 +10,6 @@ from torch.nn import functional as F
 from small_transformer.base import ModelBase
 from small_transformer.utils import setup_logger
 
-
 log = setup_logger(__name__)
 
 

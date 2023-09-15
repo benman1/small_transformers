@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from small_transformer.model import train_tokenizer, load_tokenizer
+from small_transformer.model import load_tokenizer, train_tokenizer
 
 
 @pytest.fixture
