@@ -1,18 +1,28 @@
-"""Tests for the tokenizer.
+"""Tests for the tokenizer."""
+import os
 
-TODO: check this properly!
-"""
 import pytest
 
 from small_transformer.model import train_tokenizer, load_tokenizer
 
 
 @pytest.fixture
-def tokenizer():
-    """Load a tokenizer"""
-    return load_tokenizer("test_tokenizer.model")
+def text_file(tmp_path):
+    """Temporary file for text data"""
+    f = tmp_path / "text.txt"
+    f.write_text("This is some sample text data")
+    return f
 
 
-def test_train_tokenizer(tokenizer):
+def test_train_tokenizer(text_file):
+    """Test training."""
+    train_tokenizer(modelfile="test_tokenizer", vocab_size=273, textfile=str(text_file))
+    assert os.path.exists("test_tokenizer.model")
+
+
+def test_load_tokenizer(text_file):
+    """Test loading and applying the tokenizer."""
+    train_tokenizer(modelfile="test_tokenizer", vocab_size=273, textfile=str(text_file))
+    tokenizer = load_tokenizer(modelfile="test_tokenizer")
     encoding = tokenizer.encode("This is a test")
     assert tokenizer.decode(encoding) == "This is a test"
