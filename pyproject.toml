@@ -10,21 +10,17 @@ keywords = ["llms", "ai", "gpt", "transformer", "llama2"]
 
 [tool.poetry.dependencies]
 ruff="^0.0.278"
-numpy
-scipy
-matplotlib
-seaborn
-pandas
-pytest
+numpy="^1.25.2"
+scipy="^1.11.2"
+matplotlib="^3.8.0"
+pytest="^7.4.2"
 jupyter="^1.0.0"
 jupyterlab="4.0.2"
-pyyaml
-torch
-torchvision
+torch="^2.0.1"
 tensorboard="^1.14"
-tqdm
+tqdm="^4.66.1"
 sentencepiece="^0.1.99"
-
+torchtext="^0.15.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.8"]
