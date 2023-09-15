@@ -3,8 +3,6 @@
 Attention mechanisms are essential components of Transformers,
 and full attention, as well as sparse attention, can be employed.
 """
-from abc import abstractmethod
-
 import torch
 from torch import nn as nn
 from torch.nn import functional as F
@@ -16,126 +14,107 @@ from small_transformer.utils import setup_logger
 log = setup_logger(__name__)
 
 
-class Attention(ModelBase):
-    """Abstract Attention class handles projections.
+class MultiHeadAttention(ModelBase):
 
-    _calculate_attention() defined abstractly.
-    Attention mechanisms override this with specific logic.
-    """
-    def __init__(self, d_model, n_heads: int):
+    def __init__(self, d_model, n_heads):
         super().__init__()
-
+        self.d_model = d_model
+        self.qkv_proj = nn.Linear(d_model, 3 * d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
         self.n_heads = n_heads
-        self.q_lin = nn.Linear(d_model, d_model)
-        self.k_lin = nn.Linear(d_model, d_model)
+        self.d_k = d_model // n_heads
         log.info(f'<init>: \n{self}')
 
-    def forward(self, q, k, v, mask=None):
-        # Apply linear projections
-        q = self.q_lin(q)
-        k = self.k_lin(k)
-        v = self.v_lin(v)
+    def forward(self, query, key, value):
+        # QKV projections
+        qkv = self.qkv_proj(query)
+        q, k, v = torch.chunk(qkv, 3, dim=-1)
 
-        # Calculate attention
-        attn_out = self._calculate_attention(q, k, v, mask)
+        # Head split
+        q = q.reshape(q.shape[0], q.shape[1], self.n_heads, self.d_k)
+        k = k.reshape(k.shape[0], k.shape[1], self.n_heads, self.d_k)
+        v = v.reshape(v.shape[0], v.shape[1], self.n_heads, self.d_k)
 
-        return attn_out
+        # Attention
+        scores = torch.matmul(q, k.transpose(-2, -1)) / self.d_k ** 0.5
+        scores = F.softmax(scores, dim=-1)
+        context = torch.matmul(scores, v)
 
-    @abstractmethod
-    def _calculate_attention(self, q, k, v, mask):
-        pass
+        # Head concat and proj
+        context = context.transpose(1, 2).reshape(context.shape[0], context.shape[1], self.d_model)
+        output = self.out_proj(context)
+
+        return output
 
 
-class FlashAttention(Attention):
-    """FlashAttention mechanism.
+class SparseAttention(MultiHeadAttention):
 
-    This aims to optimize the speed and memory consumption of
-    attention modules on GPUs. FlashAttention organizes the
-    input into blocks and introduces recomputation to make better
-    use of the fast memory on GPUs. It has been integrated into
-    frameworks like PyTorch, DeepSpeed, and Megatron-LM.
-    """
-    def __init__(self, d_model, n_heads: int, n_chunks: int):
+    def __init__(self, d_model, n_heads):
+        super().__init__(d_model, n_heads)
+        log.info(f'<init>: \n{self}')
+
+    def forward(self, query, key, value, mask=None):
+        # Apply mask to queries
+        query = query * mask[:, None, :]
+
+        # Attention
+        context = super().forward(query, key, value)
+        return context
+
+
+class FlashAttention(MultiHeadAttention):
+
+    def __init__(self, d_model, n_heads, n_chunks):
         super().__init__(d_model, n_heads)
         self.n_chunks = n_chunks
+        log.info(f'<init>: \n{self}')
 
-    def _calculate_attention(self, q, k, v, mask):
-        """Flash Attention.
+    def forward(self, query, key, value, mask=None):
+        # Segment into chunks
+        q_chunks = torch.chunk(query, self.n_chunks, dim=-2)
+        k_chunks = torch.chunk(key, self.n_chunks, dim=-2)
+        v_chunks = torch.chunk(value, self.n_chunks, dim=-2)
 
-        Split queries/keys into chunks and do segmented attention
-        """
-        q = self.q_lin(q)
-        k = self.k_lin(k)
+        # Attention on chunks
+        context = []
+        for q, k, v in zip(q_chunks, k_chunks, v_chunks):
+            c = super().forward(q, k, v)
+            context.append(c)
 
-        # Split into chunks
-        q_chunks = torch.chunk(q, self.n_chunks, dim=1)
-        k_chunks = torch.chunk(k, self.n_chunks, dim=1)
-
-        # Calculate attention per chunk
-        attn_out = []
-        for q_c, k_c in zip(q_chunks, k_chunks):
-            attn_weights = torch.matmul(q_c, k_c.transpose(-1, -2))
-            attn_weights = F.softmax(attn_weights, dim=-1)
-            attn_out.append(torch.matmul(attn_weights, v_c))
-
-        # Combine chunks
-        attn_out = torch.cat(attn_out, dim=1)
-        return attn_out
+        # Concat chunks
+        context = torch.cat(context, dim=-2)
+        return context
 
 
-class SparseAttention(Attention):
-    """Sparse Attention.
-
-    Apply a mask to the queries before calculating attention.
-    """
-    def _calculate_attention(self, q, k, v, mask):
-        q = self.q_lin(q)
-        k = self.k_lin(k)
-
-        # Apply sparse mask to queries
-        q = q * mask
-
-        # Attention calculation
-        attn_weights = torch.matmul(q, k.transpose(-1, -2))
-        attn_weights = F.softmax(attn_weights, dim=-1)
-        attn_out = torch.matmul(attn_weights, v)
-
-        return attn_out
-
-
-class GroupedQueryAttention(Attention):
+class GroupedQueryAttention(MultiHeadAttention):
     """Grouped Multi-Head Attention.
 
     Different heads share the same linear transformation matrices
     on the keys and values. This approach reduces computation costs
     while slightly sacrificing model quality. Models like PaLM and StarCoder
     utilize multi-query attention
+
+    The key difference from standard MHA is that q, k, v all come from the same x input.
     """
-    def __init__(self, d_model: int, n_heads: int):
+
+    def __init__(self, d_model, n_heads):
         super().__init__(d_model, n_heads)
-        self.d_k = d_model // n_heads
-        self.v_lin = nn.Linear(d_model, d_model)
-        self.out_lin = nn.Linear(d_model, d_model)
         log.info(f'<init>: \n{self}')
 
-    def split_heads(self, x):
-        batch_size, seq_len, _ = x.size()
-        x = x.view(batch_size, seq_len, self.n_heads, self.d_k)
-        x = x.transpose(1, 2).contiguous()
-        return x
+    def forward(self, query, key, value, mask=None):
+        qkv = self.qkv_proj(query)
+        q, k, v = torch.chunk(qkv, 3, dim=-1)
 
-    def _calculate_attention(self, q, k, v, mask):
-        q, k, v = self.q_lin(q), self.k_lin(k), self.v_lin(v)
+        # Attention
+        q = q.reshape(q.shape[0], q.shape[1], self.n_heads, self.d_k)
+        k = k.reshape(k.shape[0], k.shape[1], self.n_heads, self.d_k)
+        v = v.reshape(v.shape[0], v.shape[1], self.n_heads, self.d_k)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / self.d_k ** 0.5
+        scores = F.softmax(scores, dim=-1)
+        context = torch.matmul(scores, v)
 
-        q = self.split_heads(q)
-        k = self.split_heads(k)
-        v = self.split_heads(v)
+        # Output proj
+        context = context.transpose(1, 2).reshape(context.shape[0], context.shape[1], self.d_model)
+        output = self.out_proj(context)
 
-        attn_weights = torch.matmul(q, k.transpose(-1, -2))
-        attn_weights = F.softmax(attn_weights / (self.d_k ** 0.5), dim=-1)
-
-        attn_out = torch.matmul(attn_weights, v)
-        attn_out = attn_out.transpose(1, 2).reshape(attn_out.size(0), -1, self.n_heads * self.d_k)
-
-        output = self.out_lin(attn_out)
         return output
