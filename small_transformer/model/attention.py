@@ -3,7 +3,6 @@
 Attention mechanisms are essential components of Transformers,
 and full attention, as well as sparse attention, can be employed.
 """
-from typing import Literal
 
 import torch
 from torch import Tensor, softmax
@@ -26,14 +25,12 @@ class Attention(ModelBase):
             in_features: int,
             n_heads: int,
             max_seq_len: int = 100,
-            attention_type: str = Literal["Multihead", "Softmax", "Flash"]
     ):
         """Init.
         Args:
             in_features (int): Embedding dimensionality.
             n_heads (int): Number of attention heads (can be used for normalization).
             max_seq_len (int): Maximum relative position.
-            attention_type (str): Which attention to use
 
         TODO: implement positional encoding?
         """
@@ -43,7 +40,6 @@ class Attention(ModelBase):
         self.n_heads = n_heads
         self.max_seq_len = max_seq_len
         self.d_k = in_features // self.n_heads
-        self.attention_type = attention_type
         self.qkv_proj = None
 
         # weight matrixes of the same size as the transformer model's
@@ -52,17 +48,9 @@ class Attention(ModelBase):
             in_features=self.in_features,
             out_features=3 * self.in_features
         )
-
-        match self.attention_type:
-            case "Multihead":
-                self.out_proj = nn.Linear(self.in_features, self.in_features)
-            case _:
-                if not hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
-                    raise ValueError("Torch implementation too old!")
-
-                mask = torch.full((1, 1, self.max_seq_len, self.max_seq_len), float("-inf"))
-                mask = torch.triu(mask, diagonal=1)
-                self.register_buffer("mask", mask)
+        # mask = torch.full((1, 1, self.max_seq_len, self.max_seq_len), float("-inf"))
+        # mask = torch.triu(mask, diagonal=1)
+        # self.register_buffer("mask", mask)
 
         log.info(f'<init>: \n{self}')
 
@@ -84,17 +72,9 @@ class Attention(ModelBase):
         """
         Q, K, V = self.project_qkv(x)
         # flash implementation
-        if self.qkv_proj is None:
-            return torch.nn.functional.scaled_dot_product_attention(
-                Q,
-                K,
-                V,
-                attn_mask=None,
-                dropout_p=self.dropout if self.training else 0.0,
-                is_causal=True
-            )
-
         scores = Q @ K.transpose(-2, -1)
+        # assert hasattr(self, 'mask')
+        # scores = scores + self.mask[:, :, :self.max_seq_len, :self.max_seq_len]
         # softmax to keep gradients stable:
         attention = softmax(scores / K.shape[1] ** 0.5, dim=-1)
         # weighted sum of all four value vectors:
@@ -102,7 +82,65 @@ class Attention(ModelBase):
         context = context.transpose(1, 2).reshape(
             context.shape[0], context.shape[1], self.in_features
         )
-        if self.attention_type != "Multihead":
-            return context
+        return context
 
+
+class MultiHeadAttention(Attention):
+    def __init__(
+            self,
+            in_features: int,
+            n_heads: int,
+            max_seq_len: int = 100,
+    ):
+        """Init.
+        Args:
+            in_features (int): Embedding dimensionality.
+            n_heads (int): Number of attention heads (can be used for normalization).
+            max_seq_len (int): Maximum relative position.
+        """
+        super().__init__(in_features, n_heads, max_seq_len)
+        self.out_proj = nn.Linear(self.in_features, self.in_features)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Apply multihead attention."""
+        context = super().forward(x)
         return self.out_proj(context)
+
+
+class FlashAttention(Attention):
+    """Implementation of Flash Attention."""
+
+    def __init__(
+            self,
+            in_features: int,
+            n_heads: int,
+            max_seq_len: int = 100,
+            dropout: float = 0.1
+    ):
+        """Init.
+        Args:
+            in_features (int): Embedding dimensionality.
+            n_heads (int): Number of attention heads (can be used for normalization).
+            max_seq_len (int): Maximum relative position.
+            dropout: dropout ratio for flash attention.
+        """
+        super().__init__(in_features, n_heads, max_seq_len)
+        if not hasattr(torch.nn.functional, 'scaled_dot_product_attention'):
+            raise RuntimeError("Torch implementation too old!")
+        self.dropout = dropout
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Run flash attention."""
+        batch_size, seq_length, _ = x.shape
+        Q, K, V = self.project_qkv(x)
+        output = torch.nn.functional.scaled_dot_product_attention(
+            Q,
+            K,
+            V,
+            attn_mask=None,
+            dropout_p=self.dropout if self.training else 0.0,
+            is_causal=True
+        )
+
+        output = output.transpose(1, 2).contiguous().view(batch_size, seq_length, -1)
+        return output

@@ -2,7 +2,7 @@
 import pytest
 import torch
 
-from small_transformer.model import Attention
+from small_transformer.model import Attention, FlashAttention, MultiHeadAttention
 
 batchsize = 16
 seqlen = 32
@@ -17,24 +17,24 @@ def inputs():
 
 
 def test_attention(inputs):
-    """Test output shape of standard multi-head attention"""
-    attn = Attention(emb_dim, 8, attention_type="Softmax")
+    """Test output shape of softmax attention"""
+    attn = Attention(emb_dim, 8)
     x = torch.rand(16, seqlen, emb_dim)
     output = attn(x)
+    assert output.shape == x.shape
+
+
+def test_mha_attention(inputs):
+    """Test output shape of multi-head attention"""
+    mha = MultiHeadAttention(emb_dim, 8)
+    x = torch.rand(16, seqlen, emb_dim)
+    output = mha(x)
     assert output.shape == x.shape
 
 
 def test_flash_attention(inputs):
     """Test output shape of standard multi-head attention"""
-    attn = Attention(emb_dim, 8, attention_type="Flash")
+    fa = FlashAttention(emb_dim, 8)
     x = torch.rand(16, seqlen, emb_dim)
-    output = attn(x)
-    assert output.shape == x.shape
-
-
-def test_multihead_attention(inputs):
-    """Test output shape of standard multi-head attention"""
-    mha = Attention(emb_dim, 8, attention_type="Multihead")
-    x = torch.rand(16, seqlen, emb_dim)
-    output = mha(x)
+    output = fa(x)
     assert output.shape == x.shape
