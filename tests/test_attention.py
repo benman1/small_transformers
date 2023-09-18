@@ -2,12 +2,7 @@
 import pytest
 import torch
 
-from small_transformer.model import (
-    FlashAttention,
-    GroupedQueryAttention,
-    MultiHeadAttention,
-    SparseAttention,
-)
+from small_transformer.model import Attention
 
 batchsize = 16
 seqlen = 32
@@ -21,32 +16,17 @@ def inputs():
     return x
 
 
-def test_multihead_attention(inputs):
+def test_attention(inputs):
     """Test output shape of standard multi-head attention"""
-    mha = MultiHeadAttention(emb_dim, 8)
+    attn = Attention(emb_dim, 8)
     x = torch.rand(16, seqlen, emb_dim)
-    output = mha(x, x, x)
+    output = attn(x)
     assert output.shape == x.shape
 
 
-def test_sparse_attention(inputs):
-    """Test sparse attention with random mask"""
-    sa = SparseAttention(emb_dim, 8)
-    mask = torch.rand(inputs.shape[:2])
-    output = sa(inputs, inputs, inputs, mask)
-    assert output.shape == inputs.shape
-
-
-def test_flash_attention(inputs):
-    """Test flash attention with fixed mask"""
-    fa = FlashAttention(emb_dim, 8, 4)
-    mask = torch.ones(inputs.shape[0], inputs.shape[1] // 4 + 1).bool()
-    output = fa(inputs, inputs, inputs, mask)
-    assert output.shape == inputs.shape
-
-
-def test_grouped_query_attention(inputs):
-    """Test grouped query attention ignores key and value"""
-    gqa = GroupedQueryAttention(emb_dim, 8)
-    output = gqa(inputs, inputs, inputs)
-    assert output.shape == inputs.shape
+def test_multihead_attention(inputs):
+    """Test output shape of standard multi-head attention"""
+    mha = Attention(emb_dim, 8, multi_head=True)
+    x = torch.rand(16, seqlen, emb_dim)
+    output = mha(x)
+    assert output.shape == x.shape
