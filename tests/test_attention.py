@@ -18,7 +18,15 @@ def inputs():
 
 def test_attention(inputs):
     """Test output shape of standard multi-head attention"""
-    attn = Attention(emb_dim, 8)
+    attn = Attention(emb_dim, 8, attention_type="Softmax")
+    x = torch.rand(16, seqlen, emb_dim)
+    output = attn(x)
+    assert output.shape == x.shape
+
+
+def test_flash_attention(inputs):
+    """Test output shape of standard multi-head attention"""
+    attn = Attention(emb_dim, 8, attention_type="Flash")
     x = torch.rand(16, seqlen, emb_dim)
     output = attn(x)
     assert output.shape == x.shape
@@ -26,7 +34,7 @@ def test_attention(inputs):
 
 def test_multihead_attention(inputs):
     """Test output shape of standard multi-head attention"""
-    mha = Attention(emb_dim, 8, multi_head=True)
+    mha = Attention(emb_dim, 8, attention_type="Multihead")
     x = torch.rand(16, seqlen, emb_dim)
     output = mha(x)
     assert output.shape == x.shape
