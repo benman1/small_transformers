@@ -3,7 +3,37 @@ import pytest
 import torch
 
 from small_transformer.base import ModelBase
-from small_transformer.model import EncoderDecoderLayer
+from small_transformer.model import (
+    EncoderDecoderLayer, FeedForwardNetwork,
+    Attention, LayerNorm, FlashAttention,
+    MultiHeadAttention, RMSNorm
+)
+
+
+vocab_size = 1000
+d_model = 512
+n_layers = 6
+n_heads = 1
+n_batches = 16
+max_seq_len = 10
+
+
+@pytest.mark.parametrize("attn_class,norm_class", [
+    (Attention, LayerNorm), (FlashAttention, LayerNorm),
+    (MultiHeadAttention, LayerNorm), (MultiHeadAttention, RMSNorm),
+    (Attention, RMSNorm), (FlashAttention, RMSNorm),
+])
+def test_transformer_block(attn_class, norm_class):
+    """Test transformer block run with default attention and norm."""
+    block = EncoderDecoderLayer(
+        in_features=d_model, n_heads=n_heads,
+        ffn=FeedForwardNetwork(in_features=d_model, out_features=d_model),
+        attn_class=attn_class,
+        norm_class=norm_class
+    )
+    x = torch.randint(low=0, high=vocab_size, size=(n_batches, max_seq_len, d_model))
+    out = block(x)
+    assert out.shape == (n_batches, max_seq_len, d_model)
 
 
 class MockModule(ModelBase):
