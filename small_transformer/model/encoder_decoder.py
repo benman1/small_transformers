@@ -32,9 +32,9 @@ class EncoderDecoderLayer(ModelBase):
 
         log.info(f'<init>: \n{self}')
 
-    def forward(self, x, freqs_cos, freqs_sin):
+    def forward(self, x):
         """Forward pass."""
-        attn_out = self.attn.forward(self.attention_norm(x), freqs_cos, freqs_sin)
+        attn_out = self.attn.forward(self.attention_norm(x))
         out1 = attn_out + x
 
         ffn_out = self.ffn.forward(self.ffn_norm(out1))
