@@ -1,22 +1,27 @@
 """Normalization functionality."""
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from small_transformer.base import ModelBase
 
 
 class LayerNorm(ModelBase):
     """Z-normalization."""
-    def __init__(self, d_model, eps: float = 1e-6):
+    def __init__(self, in_features, eps: float = 1e-6):
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(d_model))
-        self.bias = nn.Parameter(torch.zeros(d_model))
+        self.weight = nn.Parameter(torch.ones(in_features))
+        self.bias = nn.Parameter(torch.zeros(in_features))
         self.eps = eps
 
-    def forward(self, x):
+    @staticmethod
+    def _calculate_stats(x: Tensor) -> (Tensor, Tensor):
+        """Calculate mean and standard deviation."""
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
+        return mean, std
 
+    def forward(self, x):
+        mean, std = self._calculate_stats(x.float())
         out = (x - mean) / (std + self.eps)
         out = self.weight * out + self.bias
 
@@ -43,4 +48,4 @@ class RMSNorm(ModelBase):
 
     def forward(self, x: Tensor):
         normed = self.get_norm(x.float())
-        return normed.type_as(x)
+        return normed  # .type_as(x)

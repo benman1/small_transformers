@@ -26,8 +26,8 @@ def test_layer_norm_grads(random_inputs):
 
     out.mean().backward()
 
-    assert ln.gamma.grad is not None
-    assert ln.beta.grad is not None
+    assert ln.weight.grad is not None
+    assert ln.bias.grad is not None
 
 
 def test_rms_norm(random_inputs):
