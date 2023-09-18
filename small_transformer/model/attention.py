@@ -2,7 +2,10 @@
 
 Attention mechanisms are essential components of Transformers,
 and full attention, as well as sparse attention, can be employed.
+
+TODO: implement sparse attention!
 """
+from typing import Literal
 
 import torch
 from torch import Tensor, softmax
@@ -144,3 +147,17 @@ class FlashAttention(Attention):
 
         output = output.transpose(1, 2).contiguous().view(batch_size, seq_length, -1)
         return output
+
+
+AttentionTypes = Literal["Softmax", "Multihead", "Flash"]
+
+
+def get_attention_class(attention_type: AttentionTypes):
+    """Mapping from string to class."""
+    match attention_type:
+        case 'FlashAttention':
+            return FlashAttention
+        case 'Softmax':
+            return Attention
+        case _:  # multihead
+            return MultiHeadAttention
