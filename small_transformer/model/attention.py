@@ -3,9 +3,10 @@
 Attention mechanisms are essential components of Transformers,
 and full attention, as well as sparse attention, can be employed.
 """
+import math
+
 import torch
-from torch import nn as nn
-from torch.nn import functional as F
+from torch import nn as nn, Tensor, softmax
 
 from small_transformer.base import ModelBase
 from small_transformer.utils import setup_logger
@@ -13,111 +14,75 @@ from small_transformer.utils import setup_logger
 log = setup_logger(__name__)
 
 
-class MultiHeadAttention(ModelBase):
+class Attention(ModelBase):
+    """Relative positional encoding attention.
 
-    def __init__(self, d_model, n_heads):
-        super().__init__()
-        self.d_model = d_model
-        self.qkv_proj = nn.Linear(d_model, 3 * d_model)
-        self.out_proj = nn.Linear(d_model, d_model)
-        self.n_heads = n_heads
-        self.d_k = d_model // n_heads
-        log.info(f'<init>: \n{self}')
-
-    def forward(self, query, key, value):
-        # QKV projections
-        qkv = self.qkv_proj(query)
-        q, k, v = torch.chunk(qkv, 3, dim=-1)
-
-        # Head split
-        q = q.reshape(q.shape[0], q.shape[1], self.n_heads, self.d_k)
-        k = k.reshape(k.shape[0], k.shape[1], self.n_heads, self.d_k)
-        v = v.reshape(v.shape[0], v.shape[1], self.n_heads, self.d_k)
-
-        # Attention
-        scores = torch.matmul(q, k.transpose(-2, -1)) / self.d_k ** 0.5
-        scores = F.softmax(scores, dim=-1)
-        context = torch.matmul(scores, v)
-
-        # Head concat and proj
-        context = context.transpose(1, 2).reshape(
-            context.shape[0], context.shape[1], self.d_model
-        )
-        output = self.out_proj(context)
-
-        return output
-
-
-class SparseAttention(MultiHeadAttention):
-
-    def __init__(self, d_model, n_heads):
-        super().__init__(d_model, n_heads)
-        log.info(f'<init>: \n{self}')
-
-    def forward(self, query, key, value, mask=None):
-        # Apply mask to queries
-        query = query * mask[:, None, :]
-
-        # Attention
-        context = super().forward(query, key, value)
-        return context
-
-
-class FlashAttention(MultiHeadAttention):
-
-    def __init__(self, d_model, n_heads, n_chunks):
-        super().__init__(d_model, n_heads)
-        self.n_chunks = n_chunks
-        log.info(f'<init>: \n{self}')
-
-    def forward(self, query, key, value, mask=None):
-        # Segment into chunks
-        q_chunks = torch.chunk(query, self.n_chunks, dim=-2)
-        k_chunks = torch.chunk(key, self.n_chunks, dim=-2)
-        v_chunks = torch.chunk(value, self.n_chunks, dim=-2)
-
-        # Attention on chunks
-        context = []
-        for q, k, v in zip(q_chunks, k_chunks, v_chunks):
-            c = super().forward(q, k, v)
-            context.append(c)
-
-        # Concat chunks
-        context = torch.cat(context, dim=-2)
-        return context
-
-
-class GroupedQueryAttention(MultiHeadAttention):
-    """Grouped Multi-Head Attention.
-
-    Different heads share the same linear transformation matrices
-    on the keys and values. This approach reduces computation costs
-    while slightly sacrificing model quality. Models like PaLM and StarCoder
-    utilize multi-query attention
-
-    The key difference from standard MHA is that q, k, v all come from the same x input.
+    Adds relative positional encodings to the queries before applying attention.
     """
 
-    def __init__(self, d_model, n_heads):
-        super().__init__(d_model, n_heads)
+    def __init__(
+            self,
+            in_features: int,
+            n_heads: int,
+            max_seq_len: int = 100,
+            multi_head: bool = False
+    ):
+        """Init.
+        Args:
+            in_features (int): Embedding dimensionality.
+            n_heads (int): Number of attention heads (can be used for normalization).
+            max_seq_len (int): Maximum relative position.
+            multi_head (bool): Whether to apply output projection (MHA).
+
+        TODO: implement positional encoding?
+        """
+        super().__init__()
+
+        self.in_features = in_features
+        self.n_heads = n_heads
+        self.max_seq_len = max_seq_len
+        self.d_k = in_features // self.n_heads
+
+        # weight matrixes of the same size as the transformer model's
+        # token embedding dimensionality
+        self.qkv_proj = nn.Linear(
+            in_features=self.in_features,
+            out_features=3 * self.in_features
+        )
+        self.multi_head = multi_head
+        if self.multi_head:
+            self.out_proj = nn.Linear(self.in_features, self.in_features)
+        else:
+            self.out_proj = None
+
         log.info(f'<init>: \n{self}')
 
-    def forward(self, query, key, value, mask=None):
-        qkv = self.qkv_proj(query)
-        q, k, v = torch.chunk(qkv, 3, dim=-1)
+    def project_qkv(self, x: Tensor) -> (Tensor, Tensor, Tensor):
+        """Queries, keys, and value projections."""
 
-        # Attention
-        q = q.reshape(q.shape[0], q.shape[1], self.n_heads, self.d_k)
-        k = k.reshape(k.shape[0], k.shape[1], self.n_heads, self.d_k)
-        v = v.reshape(v.shape[0], v.shape[1], self.n_heads, self.d_k)
-        scores = torch.matmul(q, k.transpose(-2, -1)) / self.d_k ** 0.5
-        scores = F.softmax(scores, dim=-1)
-        context = torch.matmul(scores, v)
+        def _reshape(x: Tensor) -> Tensor:
+            """Reshape as needed."""
+            return x.reshape(x.shape[0], x.shape[1], self.n_heads, self.d_k)
 
-        # Output proj
+        qkv = self.qkv_proj(x)
+        Q, K, V = torch.chunk(qkv, 3, dim=-1)
+        return _reshape(Q), _reshape(K), _reshape(V)
+
+    def forward(self, x: Tensor):
+        """Add relative attention.
+
+        Add relative positional embeddings to the queries.
+        """
+        Q, K, V = self.project_qkv(x)
+        scores = Q @ K.transpose(-2, -1)
+        # softmax to keep gradients stable:
+        attention = softmax(scores / K.shape[1] ** 0.5, dim=-1)
+        # weighted sum of all four value vectors:
+        context = (attention @ V)
         context = context.transpose(1, 2).reshape(
-            context.shape[0], context.shape[1], self.d_model
+            context.shape[0], context.shape[1], self.in_features
         )
-        output = self.out_proj(context)
+        if not self.multi_head:
+            return context
 
-        return output
+        return self.out_proj(context)
